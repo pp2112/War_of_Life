@@ -1,0 +1,9 @@
+
+
+test_strategy(0,_,_) :-
+	write('~n').
+test_strategy(N,Strategy1,Strategy2,P1Wins,P2Wins) :-
+	play
+	K is N - 1,
+	test_strategy(K,Strategy1,Strategy2).
+		
