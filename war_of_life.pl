@@ -378,13 +378,17 @@ get_same_X(X1,Y1,[[X2,_]|Rest]) :-
 	get_same_X(X1,Y1,Rest).
 
 
+
+
+
+
 test_strategy(N,Strat1,Strat2):-
 	test_strategy(N,Strat1,Strat2,0,0,0,0).
 
 test_strategy(0,_,_,P1Wins,P2Wins,AvgMoves,NumDraws) :-
 	format('Player 1 Wins: ~d~n',[P1Wins]),
 	format('Player 2 Wins: ~d~n',[P2Wins]),
-	format('NumDraws : ~d~n',[NumDraws]),
+	format('Number of Draws : ~d~n',[NumDraws]),
 	format('AvgMoves : ~d~n',[AvgMoves]).
 test_strategy(N,Strategy1,Strategy2,P1Wins,P2Wins,AvgMoves,NumDraws) :-
 	play(quiet,Strategy1,Strategy2,NMoves,Winner),
@@ -392,16 +396,162 @@ test_strategy(N,Strategy1,Strategy2,P1Wins,P2Wins,AvgMoves,NumDraws) :-
 	 ->
 	 P1New is P1Wins + 1;
 	 P1New is P1Wins),
+
 	(Winner == 'r' 
 	 ->
 	 P2New is P2Wins + 1;
 	 P2New is P2Wins),
-	(Winner == ' '
+
+	((Winner == 'draw' ; Winner == 'stalemate' ; Winner == 'exhaust')
 	 ->
 	 NumDrawsNew is NumDraws + 1;
 	 NumDrawsNew is NumDraws),
+
 	K is N - 1,
 	test_strategy(K,Strategy1,Strategy2,P1New,P2New,AvgMoves,NumDrawsNew).
+
+
+
+bloodlust(PieceColour, Board, NewBoard, Move):-
+	findall((TempBoard,TempMove,Number),(get_possible(PieceColour,Board,TempBoard,TempMove),
+								  next_generation(TempBoard,MutatedBoard),
+								  switch_oponent(PieceColour,OpCol),
+								  count_player(OpCol,MutatedBoard,Number)),AllPossibleMoves),
+	getMin_Num(AllPossibleMoves,65,MinNum),
+	findall((FinalBoard,FinalMove),(member((FinalBoard,FinalMove,FinalNum),AllPossibleMoves),FinalNum == MinNum),MaxNumList),
+	get_first(MaxNumList,NewBoard,Move).
+
+
+
+self_preservation(PieceColour, Board, NewBoard, Move) :-
+	findall((TempBoard,TempMove,Number),(get_possible(PieceColour,Board,TempBoard,TempMove),
+								  next_generation(TempBoard,MutatedBoard),
+								  count_player(PieceColour,MutatedBoard,Number)),AllPossibleMoves),
+	getMax_Num(AllPossibleMoves,0,MaxNum),
+	findall((FinalBoard,FinalMove),(member((FinalBoard,FinalMove,FinalNum),AllPossibleMoves),FinalNum == MaxNum),MaxNumList),
+	get_first(MaxNumList,NewBoard,Move).
+
+
+land_grab(PieceColour, Board, NewBoard, Move) :-
+	findall((TempBoard,TempMove,FuncVal),(get_possible(PieceColour,Board,TempBoard,TempMove),
+								  next_generation(TempBoard,MutatedBoard),
+								  count_player(PieceColour,MutatedBoard,Number1),
+								  switch_oponent(PieceColour,OpCol),
+								  count_player(OpCol,MutatedBoard,Number2),
+								  subtract_vals(Number1,Number2,FuncVal)),AllPossibleMoves),
+	getMax_Num(AllPossibleMoves,0,MaxNum),
+	findall((FinalBoard,FinalMove),(member((FinalBoard,FinalMove,FinalNum),AllPossibleMoves),FinalNum == MaxNum),MaxNumList),
+	get_first(MaxNumList,NewBoard,Move).
+
+
+get_first([(Board,Move)|_],Board,Move).
+
+
+subtract_vals(N1,N2,Res) :-
+	Res is N1 - N2.
+
+
+switch_oponent(Current,Oponent) :-
+	(Current == 'R' -> Oponent = 'B' ;
+	 Oponent = 'R').
+
+getMax_Num([],Result,Result).
+getMax_Num([(_,_,Num)|Rest],MaxSoFar,Result) :-
+	(Num > MaxSoFar ->
+		NewMax is Num;
+		NewMax is MaxSoFar
+	),
+	getMax_Num(Rest,NewMax,Result).
+	
+
+getMin_Num([],Result,Result).
+getMin_Num([(_,_,Num)|Rest],MinSoFar,Result) :-
+	(Num < MinSoFar ->
+		NewMin is Num;
+		NewMin is MinSoFar
+	),
+	getMin_Num(Rest,NewMin,Result).
+
+
+count_player(Col,[Blue,Red],N) :-
+	(Col == 'R' ->
+		length(Red,N) ;
+	 	length(Blue,N)
+	).
+	
+
+get_possible(Col,[Blue,Red],[NBlue,NRed],Move) :-
+	append(Blue,Red,NewTotal),
+	(Col == 'R' ->
+		getNewColList(Red,NewTotal,[],NRed,Move);
+		NRed = Red
+	),
+	(Col == 'B' ->
+		getNewColList(Blue,NewTotal,[],NBlue,Move);
+		NBlue = Blue
+	).
+
+getNewColList([],_,_,_,_,_).
+getNewColList([X|Rest],AllElems,Acc,Result,[X,NextMove]) :-
+	getAllPossibleMoves(X,AllElems,NextMove),
+	append(Acc,[NextMove],NewTemp),
+	append(NewTemp,Rest,Result).	
+getNewColList([X|Rest],AllElems,Acc,Result,Move) :-
+	getNewColList(Rest,AllElems,[X|Acc],Result,Move).
+
+
+getAllPossibleMoves([X,Y],AllElems,[X1,Y1]) :-
+	newMove(X,Y,X1,Y1),
+	\+ member([X1,Y1],AllElems).
+
+
+newMove(X,Y,X1,Y1) :-
+	X1 is X+1, Y1 is Y,
+	is_in_bounds(X1,Y1).
+newMove(X,Y,X1,Y1) :-
+	X1 is X-1, Y1 is Y,
+	is_in_bounds(X1,Y1).
+newMove(X,Y,X1,Y1) :-
+	X1 is X+1, Y1 is Y+1,
+	is_in_bounds(X1,Y1).
+newMove(X,Y,X1,Y1) :-
+	X1 is X-1, Y1 is Y+1,
+	is_in_bounds(X1,Y1).
+newMove(X,Y,X1,Y1) :-
+	X1 is X+1, Y1 is Y-1,
+	is_in_bounds(X1,Y1).
+newMove(X,Y,X1,Y1) :-
+	X1 is X-1, Y1 is Y-1,
+	is_in_bounds(X1,Y1).
+newMove(X,Y,X1,Y1) :-
+	X1 is X, Y1 is Y-1,
+	is_in_bounds(X1,Y1).
+newMove(X,Y,X1,Y1) :-
+	X1 is X, Y1 is Y+1,
+	is_in_bounds(X1,Y1).
+
+
+
+is_in_bounds(X1,Y1) :-
+	X1 =< 8, X1 >= 0, 
+	Y1 =< 8, Y1 >= 0.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
