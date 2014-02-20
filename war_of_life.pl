@@ -357,47 +357,25 @@ Red  =[[1,8],[2,2],[2,8],[3,7],[4,6],[5,3],[6,6],[7,6],[7,7],[7,8],[8,3],[8,7]],
 	draw_board(Res).
 
 
-group_elems([],Result,Result).
-group_elems([[X1,Y1]|Rest],Acc,Result) :-
-	findall([X1,Y2],(get_same_X(X1,Y2,Rest)),TempGroup),
-	append(Acc,[[X1,Y1]|TempGroup],NewAcc),
-	group_elems(Rest,NewAcc,Result).
-	
-
-
-remove_List([X1,Y1],[[X1,Y1]|Rest],Rest).
-remove_List([X1,Y1],[[X2,Y2]|Rest],[[X2,Y2]|Result]) :-
-	X1 \= X2,
-	Y1 \= Y2,
-	remove_List([X1,Y1],Rest,Result).
-
-
-get_same_X(X1,Y1,[[X1,Y1]|_]). 
-get_same_X(X1,Y1,[[X2,_]|Rest]) :-
-	X1 \= X2,
-	get_same_X(X1,Y1,Rest).
-
-
-
-
-
-
 test_strategy(N,Strat1,Strat2):-
 	statistics(walltime,[Start, _]),
-	test_strategy(N,Strat1,Strat2,0,0,0,0),
+	test_strategy(N,Strat1,Strat2,0,0,0,0,N),
     statistics(walltime,[End, _]),
     Time is End - Start,
-	Avg is Time/N,
-	format('AvgTime : ~3d~n',[Avg]).
+	AvgTime is Time/N,
+	format('AvgTime : ~3d~n',[AvgTime]).
 
-test_strategy(0,_,_,P1Wins,P2Wins,AvgMoves,NumDraws) :-
+test_strategy(0,_,_,P1Wins,P2Wins,TotalMoves,NumDraws,N) :-
+	AvgMoves is TotalMoves//N,
 	format('Player 1 Wins: ~d~n',[P1Wins]),
 	format('Player 2 Wins: ~d~n',[P2Wins]),
 	format('Number of Draws : ~d~n',[NumDraws]),
 	format('AvgMoves : ~d~n',[AvgMoves]).
-test_strategy(N,Strategy1,Strategy2,P1Wins,P2Wins,AvgMoves,NumDraws) :-
-		
+test_strategy(N,Strategy1,Strategy2,P1Wins,P2Wins,TotalMoves,NumDraws,Repeats) :-
+
 	play(quiet,Strategy1,Strategy2,NMoves,Winner),
+	
+	NewTotalMoves is TotalMoves + NMoves,
 
 	(Winner == 'b' 
 	 ->
@@ -415,14 +393,14 @@ test_strategy(N,Strategy1,Strategy2,P1Wins,P2Wins,AvgMoves,NumDraws) :-
 	 NumDrawsNew is NumDraws),
 
 	K is N - 1,
-	test_strategy(K,Strategy1,Strategy2,P1New,P2New,AvgMoves,NumDrawsNew).
+	test_strategy(K,Strategy1,Strategy2,P1New,P2New,NewTotalMoves,NumDrawsNew,Repeats).
 
 
 
 bloodlust(PieceColour, Board, NewBoard, Move):-
+	switch_oponent(PieceColour,OpCol),
 	findall((TempBoard,TempMove,Number),(get_possible(PieceColour,Board,TempBoard,TempMove),
 								  next_generation(TempBoard,MutatedBoard),
-								  switch_oponent(PieceColour,OpCol),
 								  count_player(OpCol,MutatedBoard,Number)),AllPossibleMoves),
 	getMin_Num(AllPossibleMoves,65,MinNum),
 	findall((FinalBoard,FinalMove),(member((FinalBoard,FinalMove,FinalNum),AllPossibleMoves),FinalNum == MinNum),MinNumList),
@@ -439,11 +417,15 @@ self_preservation(PieceColour, Board, NewBoard, Move) :-
 	get_first(MaxNumList,NewBoard,Move).
 
 
-land_grab(PieceColour, Board, NewBoard, Move) :-
+
+land_grab(PieceColour,Board,NewBoard,Move) :-
+	land_grab(PieceColour,Board,NewBoard,Move,_).
+
+land_grab(PieceColour, Board, NewBoard, Move,MaxNum) :-
+	switch_oponent(PieceColour,OpCol),
 	findall((TempBoard,TempMove,FuncVal),(get_possible(PieceColour,Board,TempBoard,TempMove),
 								  next_generation(TempBoard,MutatedBoard),
 								  count_player(PieceColour,MutatedBoard,Number1),
-								  switch_oponent(PieceColour,OpCol),
 								  count_player(OpCol,MutatedBoard,Number2),
 								  subtract_vals(Number1,Number2,FuncVal)),AllPossibleMoves),
 	getMax_Num(AllPossibleMoves,-65,MaxNum),
@@ -452,38 +434,25 @@ land_grab(PieceColour, Board, NewBoard, Move) :-
 
 
 
-
 minimax(PieceColour,Board,NewBoard,Move) :-
 	switch_oponent(PieceColour,OpCol),
-	findall((FirstBoard1,MutatedBoard1,FirstMove1),(get_possible(PieceColour,Board,FirstBoard1,FirstMove1),
-												  next_generation(FirstBoard1,MutatedBoard1)),FirstPaths),
+	findall((Mutate1,BeforeMutate1,Moves1),(get_possible(PieceColour,Board,BeforeMutate1,Moves1),
+											next_generation(BeforeMutate1,Mutate1)),FirstStageNodes),
+
+	findall((BeforeMutate2,Moves2,FuncVal),(member((Mutate2,BeforeMutate2,Moves2),FirstStageNodes),
+											land_grab(OpCol,Mutate2,_,_,FuncVal)),SecondStageNodes),
+
+	getMin_Num3(SecondStageNodes,200,MinVal),
 	
-	findall(((OriginalMove2,FirstBoard2,FirstMove2),(SecondBoard1,SecondMove1,SecondFunc2)),
-												 (member((OriginalMove2,FirstBoard2,FirstMove2),FirstPaths),
-												  get_possible(OpCol,FirstBoard2,SecondBoard1,SecondMove1),
-												  next_generation(SecondBoard1,MutatedBoard2),
-								  				  count_player(OpCol,MutatedBoard2,Number3),
-								  				  count_player(PieceColour,MutatedBoard2,Number4),
-								  				  subtract_vals(Number3,Number4,SecondFunc2)),SecondPathCosts),
+	findall((BeforeMutate3,Moves3),(member((BeforeMutate3,Moves3,FuncVal3),SecondStageNodes),
+								    MinVal == FuncVal3),FinalRes),
 
-	findall((FirstBoard3,FirstMove3,CostList),(member(((FirstBoard3,_,FirstMove3),(_,_,_)),SecondPathCosts),
-												   findall(FirstAllCost,(member(((FirstBoard3,_,FirstMove3),(_,_,FirstAllCost)),
-																		 SecondPathCosts)),CostList)),FirstNodeCosts),
-
-	findall((FirstBoard4,FirstMove4,MaxCost4),(member((FirstBoard4,FirstMove4,CostList4),FirstNodeCosts),
-											   getMin_Num3(CostList4,200,MaxCost4)),MaxCostPerNode1),
-
-	getMax_Num(MaxCostPerNode1,-200,MaxCost5),
-
-
-	findall((FirstBoard5,FirstMove5),(member((FirstBoard5,FirstMove5,NodeMax),MaxCostPerNode1),MaxCost5 == NodeMax),FinalAccList),
-
-	get_first(FinalAccList,NewBoard,Move).
+	get_first(FinalRes,NewBoard,Move).
 	
 	
 
 getMin_Num3([],Result,Result).
-getMin_Num3([Num|Rest],MaxSoFar,Result) :-
+getMin_Num3([(_,_,Num)|Rest],MaxSoFar,Result) :-
 	(Num < MaxSoFar ->
 		NewMax is Num;
 		NewMax is MaxSoFar
@@ -554,11 +523,11 @@ count_player(Col,[Blue,Red],N) :-
 get_possible(Col,[Blue,Red],[NBlue,NRed],Move) :-
 	append(Blue,Red,NewTotal),
 	(Col == 'r' ->
-		getNewColList(Red,NewTotal,[],NRed,Move);
+		(getNewColList(Red,NewTotal,[],NRed1,Move),mergeSort(NRed1,NRed));
 		NRed = Red
 	),
 	(Col == 'b' ->
-		getNewColList(Blue,NewTotal,[],NBlue,Move);
+		(getNewColList(Blue,NewTotal,[],NBlue1,Move),mergeSort(NBlue1,NBlue));
 		NBlue = Blue
 	).
 
@@ -574,7 +543,6 @@ getNewColList([X|Rest],AllElems,Acc,Result,Move) :-
 
 getAllPossibleMoves([X,Y],AllElems,[X1,Y1]) :-
 	neighbour_position(X,Y,[X1,Y1]),
-	is_in_bounds(X1,Y1),
 	\+ member([X1,Y1],AllElems).
 
 
@@ -583,39 +551,27 @@ my_flatten([],[]).
 my_flatten([X|Xs],Zs) :- my_flatten(X,Y), my_flatten(Xs,Ys), append(Y,Ys,Zs).
 
 
-newMove(X,Y,X1,Y1) :-
-	X1 is X+1, Y1 is Y,
-	is_in_bounds(X1,Y1).
-newMove(X,Y,X1,Y1) :-
-	X1 is X-1, Y1 is Y,
-	is_in_bounds(X1,Y1).
-newMove(X,Y,X1,Y1) :-
-	X1 is X+1, Y1 is Y+1,
-	is_in_bounds(X1,Y1).
-newMove(X,Y,X1,Y1) :-
-	X1 is X-1, Y1 is Y+1,
-	is_in_bounds(X1,Y1).
-newMove(X,Y,X1,Y1) :-
-	X1 is X+1, Y1 is Y-1,
-	is_in_bounds(X1,Y1).
-newMove(X,Y,X1,Y1) :-
-	X1 is X-1, Y1 is Y-1,
-	is_in_bounds(X1,Y1).
-newMove(X,Y,X1,Y1) :-
-	X1 is X, Y1 is Y-1,
-	is_in_bounds(X1,Y1).
-newMove(X,Y,X1,Y1) :-
-	X1 is X, Y1 is Y+1,
-	is_in_bounds(X1,Y1).
+mergeSort([X],[X]) :- !.
+mergeSort(X,Res) :-
+	length(X,NumElems),
+	Half is NumElems//2,
+	splitList(X,Half,Left,Right),
+	mergeSort(Left,SortedLeft),
+	mergeSort(Right,SortedRight),
+	mergeLists(SortedLeft,SortedRight,Res).				
 
+splitList(Res,0,[],Res).
+splitList([X|Xs],N,[X|Rest],LeftOver) :-
+	N > 0,
+	K is N-1,
+	splitList(Xs,K,Rest,LeftOver).
 
-
-is_in_bounds(X1,Y1) :-
-	X1 =< 8, X1 >= 0, 
-	Y1 =< 8, Y1 >= 0.
-
-
-
+mergeLists([],Y,Y).
+mergeLists(X,[],X).
+mergeLists([X|Xs],[Y|Ys],[X|Rest]) :-
+	X @< Y, mergeLists(Xs,[Y|Ys],Rest).
+mergeLists([X|Xs],[Y|Ys],[Y|Rest]) :-
+	Y @=< X, mergeLists([X|Xs],Ys,Rest).
 
 
 
